@@ -50,6 +50,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                       <Link href="/kitchen/reports" className="underline">
                         Reports
                       </Link>
+                      <Link href="/kitchen/prep" className="underline">
+                        Prep
+                      </Link>
                     </>
                   )}
                   {user.role === "SECRETARY" && (
