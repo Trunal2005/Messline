@@ -13,13 +13,15 @@ export const metadata: Metadata = {
   title: "Reports | Messline",
 };
 
-function formatUtcDate(val: string): Date {
+function formatUtcDate(val: string | undefined, fallback: Date): Date {
+  if (!val) return fallback;
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(val.trim());
-  if (!match) return new Date();
+  if (!match) return fallback;
   const y = Number(match[1]);
   const m = Number(match[2]);
   const d = Number(match[3]);
-  return new Date(Date.UTC(y, m - 1, d));
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return isNaN(date.getTime()) ? fallback : date;
 }
 
 function toInputDate(d: Date): string {
@@ -44,12 +46,11 @@ export default async function ReportsPage({
   const defaultStartDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 7));
   const defaultEndDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
 
-  const startStr = searchParams.start || toInputDate(defaultStartDate);
-  const endStr = searchParams.end || toInputDate(defaultEndDate);
+  const startDate = formatUtcDate(searchParams.start, defaultStartDate);
+  const endDate = formatUtcDate(searchParams.end, defaultEndDate);
+  const startStr = toInputDate(startDate);
+  const endStr = toInputDate(endDate);
   const reportType = searchParams.type === "revenue" ? "revenue" : "consumption";
-
-  const startDate = formatUtcDate(startStr);
-  const endDate = formatUtcDate(endStr);
 
   const consumptionData =
     reportType === "consumption"

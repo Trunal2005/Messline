@@ -5,6 +5,7 @@ import {
   buildCSV,
   getExtraRevenueReport,
   getMealConsumptionReport,
+  toInputDate,
 } from "@/lib/reports";
 
 export const dynamic = "force-dynamic";
@@ -67,7 +68,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="messline-extra-revenue-${searchParams.get("start") || "export"}.csv"`,
+        "Content-Disposition": `attachment; filename="messline-extra-revenue-${toInputDate(startDate)}.csv"`,
       },
     });
   } else {
@@ -109,7 +110,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
-        "Content-Disposition": `attachment; filename="messline-meal-consumption-${searchParams.get("start") || "export"}.csv"`,
+        "Content-Disposition": `attachment; filename="messline-meal-consumption-${toInputDate(startDate)}.csv"`,
       },
     });
   }

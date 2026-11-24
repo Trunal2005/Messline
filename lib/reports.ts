@@ -31,11 +31,84 @@ export type ExtraRevenueRow = {
   noShowRevenueRupees: number;
 };
 
-function formatIsoDate(d: Date): string {
+export function toInputDate(d: Date): string {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
+}
+
+export function calculateConsumptionMetrics(
+  bookings: { count: number; status: BookingStatus; updatedAt: Date }[],
+  cutoffAt: Date
+) {
+  let booked = 0;
+  let served = 0;
+  let noShow = 0;
+  let cancelledPreCutoff = 0;
+  let cancelledPostCutoff = 0;
+
+  for (const b of bookings) {
+    if (b.status === BookingStatus.BOOKED) booked += b.count;
+    else if (b.status === BookingStatus.SERVED) served += b.count;
+    else if (b.status === BookingStatus.NO_SHOW) noShow += b.count;
+    else if (b.status === BookingStatus.CANCELLED) {
+      if (b.updatedAt >= cutoffAt) {
+        cancelledPostCutoff += b.count;
+      } else {
+        cancelledPreCutoff += b.count;
+      }
+    }
+  }
+
+  const totalCooked = booked + served + noShow + cancelledPostCutoff;
+  const wastageCount = noShow + cancelledPostCutoff;
+  const wastagePercent = totalCooked > 0 ? Math.round((wastageCount / totalCooked) * 100) : 0;
+
+  return {
+    booked,
+    served,
+    noShow,
+    cancelledPreCutoff,
+    cancelledPostCutoff,
+    totalCooked,
+    wastageCount,
+    wastagePercent,
+  };
+}
+
+export function calculateRevenueMetrics(
+  bookings: { count: number; status: BookingStatus; updatedAt: Date }[],
+  cutoffAt: Date,
+  priceRupees: number
+) {
+  let servedCount = 0;
+  let noShowCount = 0;
+  let activeBookedCount = 0;
+  let postCutoffCancelledCount = 0;
+
+  for (const b of bookings) {
+    if (b.status === BookingStatus.SERVED) servedCount += b.count;
+    else if (b.status === BookingStatus.NO_SHOW) noShowCount += b.count;
+    else if (b.status === BookingStatus.BOOKED) activeBookedCount += b.count;
+    else if (b.status === BookingStatus.CANCELLED && b.updatedAt >= cutoffAt) {
+      postCutoffCancelledCount += b.count;
+    }
+  }
+
+  const totalSold = activeBookedCount + servedCount + noShowCount + postCutoffCancelledCount;
+  const totalRevenueRupees = totalSold * priceRupees;
+  const servedRevenueRupees = servedCount * priceRupees;
+  const noShowRevenueRupees = (noShowCount + postCutoffCancelledCount) * priceRupees;
+
+  return {
+    totalSold,
+    servedCount,
+    noShowCount,
+    totalRevenueRupees,
+    servedRevenueRupees,
+    noShowRevenueRupees,
+  };
 }
 
 export function escapeCSVField(value: string | number | boolean | null | undefined): string {
@@ -90,49 +163,21 @@ export async function getMealConsumptionReport(
   let totalWastedAll = 0;
 
   const rows: MealConsumptionRow[] = offerings.map((offering) => {
-    let booked = 0;
-    let served = 0;
-    let noShow = 0;
-    let cancelledPreCutoff = 0;
-    let cancelledPostCutoff = 0;
+    const metrics = calculateConsumptionMetrics(offering.bookings, offering.service.cutoffAt);
 
-    for (const b of offering.bookings) {
-      if (b.status === BookingStatus.BOOKED) booked += b.count;
-      else if (b.status === BookingStatus.SERVED) served += b.count;
-      else if (b.status === BookingStatus.NO_SHOW) noShow += b.count;
-      else if (b.status === BookingStatus.CANCELLED) {
-        if (b.updatedAt >= offering.service.cutoffAt) {
-          cancelledPostCutoff += b.count;
-        } else {
-          cancelledPreCutoff += b.count;
-        }
-      }
-    }
-
-    // Cook count = booked + served + noShow + postCutoffCancelled
-    const totalCooked = booked + served + noShow + cancelledPostCutoff;
-    const wastageCount = noShow + cancelledPostCutoff;
-    const wastagePercent = totalCooked > 0 ? Math.round((wastageCount / totalCooked) * 100) : 0;
-
-    totalCookedAll += totalCooked;
-    totalServedAll += served;
-    totalWastedAll += wastageCount;
+    totalCookedAll += metrics.totalCooked;
+    totalServedAll += metrics.served;
+    totalWastedAll += metrics.wastageCount;
 
     return {
-      date: formatIsoDate(offering.service.serviceDate),
+      date: toInputDate(offering.service.serviceDate),
       meal: offering.service.meal,
       dishName: offering.menuItem.name,
       included: offering.menuItem.included,
       priceRupees: offering.menuItem.priceRupees,
       quantityTotal: offering.quantityTotal,
       quantityLeft: offering.quantityLeft,
-      totalCooked,
-      served,
-      noShow,
-      cancelledPreCutoff,
-      cancelledPostCutoff,
-      wastageCount,
-      wastagePercent,
+      ...metrics,
     };
   });
 
@@ -185,39 +230,16 @@ export async function getExtraRevenueReport(
 
   for (const offering of offerings) {
     const price = offering.menuItem.priceRupees ?? 0;
-    let servedCount = 0;
-    let noShowCount = 0;
-    let activeBookedCount = 0;
-    let postCutoffCancelledCount = 0;
+    const metrics = calculateRevenueMetrics(offering.bookings, offering.service.cutoffAt, price);
 
-    for (const b of offering.bookings) {
-      if (b.status === BookingStatus.SERVED) servedCount += b.count;
-      else if (b.status === BookingStatus.NO_SHOW) noShowCount += b.count;
-      else if (b.status === BookingStatus.BOOKED) activeBookedCount += b.count;
-      else if (b.status === BookingStatus.CANCELLED && b.updatedAt >= offering.service.cutoffAt) {
-        postCutoffCancelledCount += b.count;
-      }
-    }
-
-    // Plates sold that were charged/cooked: active booked, served, no-show, post-cutoff cancelled
-    const totalSold = activeBookedCount + servedCount + noShowCount + postCutoffCancelledCount;
-    const totalRevenueRupees = totalSold * price;
-    const servedRevenueRupees = servedCount * price;
-    const noShowRevenueRupees = (noShowCount + postCutoffCancelledCount) * price;
-
-    overallRevenue += totalRevenueRupees;
+    overallRevenue += metrics.totalRevenueRupees;
 
     rows.push({
-      date: formatIsoDate(offering.service.serviceDate),
+      date: toInputDate(offering.service.serviceDate),
       meal: offering.service.meal,
       dishName: offering.menuItem.name,
       priceRupees: price,
-      totalSold,
-      servedCount,
-      noShowCount,
-      totalRevenueRupees,
-      servedRevenueRupees,
-      noShowRevenueRupees,
+      ...metrics,
     });
   }
 
