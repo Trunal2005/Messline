@@ -65,7 +65,7 @@ async function quickCreateMealAction(formData: FormData) {
   const weekOffset = String(formData.get("week") ?? "0");
 
   const offerings: { menuItemId: string; count: number }[] = [];
-  for (const [key, value] of formData.entries()) {
+  formData.forEach((value, key) => {
     if (key.startsWith("dish_")) {
       const itemId = key.replace("dish_", "");
       const count = Number(value);
@@ -73,7 +73,7 @@ async function quickCreateMealAction(formData: FormData) {
         offerings.push({ menuItemId: itemId, count });
       }
     }
-  }
+  });
 
   if (offerings.length === 0) {
     redirect(`/kitchen/weekly?week=${weekOffset}&error=no_dishes`);
